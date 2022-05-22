@@ -47,21 +47,28 @@ func (s *Scrapper) StartScrapping(endpoint string) {
 		fmt.Println("Visiting", r.URL.String())
 	})
 
-	s.collector.OnHTML("link", func(e *colly.HTMLElement) {
-		val, _ := e.DOM.Attr("href")
-		s.checkAndLog(val)
-	})
+	// s.collector.OnHTML("link", func(e *colly.HTMLElement) {
+	// 	val, _ := e.DOM.Attr("href")
+	// 	s.checkAndLog(val)
+	// })
 
-	s.collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		val, _ := e.DOM.Attr("href")
-		s.checkAndLog(val)
-	})
+	// s.collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
+	// 	val, _ := e.DOM.Attr("href")
+	// 	s.checkAndLog(val)
+	// })
 
 	s.collector.OnResponse(func(r *colly.Response) {
 		body := r.Body
 		allFound := s.Filter.ApplyFilter(body, s.Filter.RegExp)
+
 		for i := 0; i < len(allFound); i++ {
 			s.checkAndPersistFoundValue(allFound[i])
+		}
+
+		allHrefs := s.Filter.ApplyFilter(body, HREF_REGEXP)
+		for k := 0; k < len(allHrefs); k++ {
+			parsedHref := s.Filter.HrefParser(allHrefs[k])
+			s.checkAndLog(parsedHref)
 		}
 	})
 
@@ -69,6 +76,11 @@ func (s *Scrapper) StartScrapping(endpoint string) {
 }
 
 func (s *Scrapper) checkAndLog(val string) {
+
+	if s.Filter.CheckBannedExtensions(val) {
+		return
+	}
+
 	doesStartWithSlash := s.checkPrefix(val, "/")
 
 	if doesStartWithSlash {

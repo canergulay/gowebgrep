@@ -13,6 +13,13 @@ type Filter struct {
 
 const (
 	DEFAULT_REGEXP = `[a-zA-Z0-9+._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+`
+	HREF_REGEXP    = `href=['"]([^'"]+?)['"]`
+)
+
+const (
+	JPG = "jpg"
+	PNG = "png"
+	PDF = "pdf"
 )
 
 func NewFilter() *Filter {
@@ -54,4 +61,18 @@ func regexpHelper(data []byte, rxp string) [][]byte {
 	re := regexp.MustCompile(rxp)
 	allMatches := re.FindAll(data, 1000) // ASSUMING THAT THERE COULD HAVE BEEN 1000 EMAILS IN A WEB PAGE AT MOST.
 	return allMatches
+}
+
+func (f *Filter) CheckBannedExtensions(data string) bool {
+	if len(data) < 3 {
+		return false
+	}
+	extension := data[len(data)-3:]
+	return extension == JPG || extension == PNG || extension == PDF
+}
+
+func (f *Filter) HrefParser(data []byte) string {
+	data = data[:len(data)-1]
+	data = data[6:]
+	return string(data)
 }
