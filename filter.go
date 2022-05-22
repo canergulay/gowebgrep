@@ -40,8 +40,8 @@ func NewFilter() *Filter {
 	}
 }
 
-func (f *Filter) ApplyFilter(data []byte) [][]byte {
-	all := regexpHelper(data, f.RegExp)
+func (f *Filter) ApplyFilter(data []byte, rxp string) [][]byte {
+	all := regexpHelper(data, rxp)
 	if f.SecondFilter == nil {
 		return all // IF THERE ISN'T A SECONDFILTER SPECIFIED, WE WILL RETURN EVERYTHING WE FOUND FOR THE GIVEN REGEXP.
 	}
@@ -51,7 +51,7 @@ func (f *Filter) ApplyFilter(data []byte) [][]byte {
 }
 
 func regexpHelper(data []byte, rxp string) [][]byte {
-	re := regexp.MustCompile(`[a-zA-Z0-9+._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+`)
+	re := regexp.MustCompile(rxp)
 	allMatches := re.FindAll(data, 1000) // ASSUMING THAT THERE COULD HAVE BEEN 1000 EMAILS IN A WEB PAGE AT MOST.
 	return allMatches
 }

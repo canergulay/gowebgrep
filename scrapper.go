@@ -3,8 +3,8 @@ package gowebgrep
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
-	"time"
 
 	"github.com/gocolly/colly"
 )
@@ -17,7 +17,7 @@ type Scrapper struct {
 	url              string
 	Filter           *Filter
 	RequestPerSecond *string         // WILL BE 1 PER DEFAULT NOT TO D DOS THE WEBSITE
-	FoundPool        []string        // MAIN SLICE, ALL THE MATCHED STRINGS WILL BE KEEPED
+	FoundPool        map[string]bool // MAIN SLICE, ALL THE MATCHED STRINGS WILL BE KEEPED
 	EndpointsChecked map[string]bool // TO PREVENT REPEATING ENDPOINTS WE ALREADY CHECKED
 	File             *os.File
 	collector        *colly.Collector
@@ -33,10 +33,10 @@ func InitializeScrapper(filter *Filter, tm *Timer, rps *string) *Scrapper {
 		url:              urlEntered,
 		Filter:           filter,
 		RequestPerSecond: rps,
-		FoundPool:        make([]string, 10),
+		FoundPool:        make(map[string]bool),
 		EndpointsChecked: make(map[string]bool),
 		File:             fi,
-		collector:        colly.NewCollector(),
+		collector:        colly.NewCollector(colly.URLFilters(regexp.MustCompile(urlEntered))),
 		timer:            tm,
 	}
 }
@@ -47,51 +47,66 @@ func (s *Scrapper) StartScrapping(endpoint string) {
 		fmt.Println("Visiting", r.URL.String())
 	})
 
-	s.collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
-
+	s.collector.OnHTML("link", func(e *colly.HTMLElement) {
 		val, _ := e.DOM.Attr("href")
-		doesStartWithSlash := s.checkPrefix(val, "/")
+		s.checkAndLog(val)
+	})
 
-		if doesStartWithSlash {
-
-			wasCheckedBefore := s.checkHasControlledBefore(val)
-
-			if !wasCheckedBefore {
-				s.timer.Mutex.Lock()
-				s.EndpointsChecked[val] = true
-				time.Sleep(time.Millisecond * time.Duration(s.timer.Milliseconds))
-				s.timer.Mutex.Unlock()
-				s.collector.Visit(s.url + val)
-			}
-		} else {
-			doesStartWithHttp := s.checkPrefix(val, "http")
-			if doesStartWithHttp {
-				s.collector.Visit(val)
-			}
-		}
-
+	s.collector.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		val, _ := e.DOM.Attr("href")
+		s.checkAndLog(val)
 	})
 
 	s.collector.OnResponse(func(r *colly.Response) {
 		body := r.Body
-		allFound := s.Filter.ApplyFilter(body)
+		allFound := s.Filter.ApplyFilter(body, s.Filter.RegExp)
 		for i := 0; i < len(allFound); i++ {
-			mailWithDownLine := append(allFound[i], 10)
-			s.File.Write(mailWithDownLine)
-			fmt.Println("We found an email ; ", string(allFound[i]))
+			s.checkAndPersistFoundValue(allFound[i])
 		}
 	})
 
 	s.collector.Visit(s.url)
 }
 
+func (s *Scrapper) checkAndLog(val string) {
+	doesStartWithSlash := s.checkPrefix(val, "/")
+
+	if doesStartWithSlash {
+
+		wasCheckedBefore := s.checkHasControlledBefore(val)
+
+		if !wasCheckedBefore {
+			s.EndpointsChecked[val] = true
+			s.collector.Visit(s.url + val)
+		}
+
+	} else {
+		doesStartWithHttp := s.checkPrefix(val, "http")
+		if doesStartWithHttp {
+
+			s.collector.Visit(val)
+		}
+	}
+}
+
 func (s *Scrapper) checkHasControlledBefore(endpoint string) bool {
 	urlWithEndpoint := s.url + endpoint
-	fmt.Println(urlWithEndpoint)
+	//fmt.Println(urlWithEndpoint)
 	_, ok := s.EndpointsChecked[urlWithEndpoint]
 	return ok
 }
 
 func (s *Scrapper) checkPrefix(endpoint, prefix string) bool {
 	return strings.HasPrefix(endpoint, prefix)
+}
+
+func (s *Scrapper) checkAndPersistFoundValue(value []byte) {
+	valString := string(value)
+	_, doWeHave := s.FoundPool[valString]
+	if !doWeHave {
+		fmt.Println("We found a matched string ; ", string(valString))
+		s.FoundPool[valString] = true
+		mailWithDownLine := append(value, 10)
+		s.File.Write(mailWithDownLine)
+	}
 }
